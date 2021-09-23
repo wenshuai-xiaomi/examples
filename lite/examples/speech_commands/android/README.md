@@ -1,3 +1,6 @@
+To make audroid studio work, the branch should change to 9a4bda2a6ecbba0d70bbf47b5f1a8836feef0e29
+the mast brach not work.
+
 # TensorFlow Lite Speech Command Recognition Android Demo
 
 ### Overview

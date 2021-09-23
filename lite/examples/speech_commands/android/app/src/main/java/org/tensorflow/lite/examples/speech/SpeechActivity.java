@@ -205,8 +205,8 @@ public class SpeechActivity extends Activity
 
     // Start the recording and recognition threads.
     requestMicrophonePermission();
-    startRecording();
-    startRecognition();
+    //startRecording();
+    //startRecognition();
 
     sampleRateTextView = findViewById(R.id.sample_rate);
     inferenceTimeTextView = findViewById(R.id.inference_info);
