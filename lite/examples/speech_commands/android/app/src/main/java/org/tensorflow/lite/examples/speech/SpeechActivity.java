@@ -80,11 +80,15 @@ public class SpeechActivity extends Activity
   private static final int SAMPLE_RATE = 16000;
   private static final int SAMPLE_DURATION_MS = 1000;
   private static final int RECORDING_LENGTH = (int) (SAMPLE_RATE * SAMPLE_DURATION_MS / 1000);
+
+  // used for post process after get reference result
   private static final long AVERAGE_WINDOW_DURATION_MS = 1000;
   private static final float DETECTION_THRESHOLD = 0.50f;
   private static final int SUPPRESSION_MS = 1500;
   private static final int MINIMUM_COUNT = 3;
   private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 30;
+
+  // about model
   private static final String LABEL_FILENAME = "file:///android_asset/conv_actions_labels.txt";
   private static final String MODEL_FILENAME = "file:///android_asset/conv_actions_frozen.tflite";
 
@@ -97,15 +101,23 @@ public class SpeechActivity extends Activity
   // Working variables.
   short[] recordingBuffer = new short[RECORDING_LENGTH];
   int recordingOffset = 0;
+
+  // used for record
   boolean shouldContinue = true;
   private Thread recordingThread;
+
+  // used for recognize
   boolean shouldContinueRecognition = true;
   private Thread recognitionThread;
+
   private final ReentrantLock recordingBufferLock = new ReentrantLock();
   private final ReentrantLock tfLiteLock = new ReentrantLock();
 
+  // all labels with _silence_ and _unknown
+  // displayedLabels by TextView
   private List<String> labels = new ArrayList<String>();
   private List<String> displayedLabels = new ArrayList<>();
+
   private RecognizeCommands recognizeCommands = null;
   private LinearLayout bottomSheetLayout;
   private LinearLayout gestureLayout;
@@ -116,7 +128,8 @@ public class SpeechActivity extends Activity
   private Interpreter tfLite;
   private ImageView bottomSheetArrowImageView;
 
-  private TextView yesTextView,
+  private TextView // ten results: TextView
+	  yesTextView,
       noTextView,
       upTextView,
       downTextView,
@@ -268,13 +281,13 @@ public class SpeechActivity extends Activity
     sampleRateTextView.setText(SAMPLE_RATE + " Hz");
   }
 
+  // on start app, permission window showed
   private void requestMicrophonePermission() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      requestPermissions(
-          new String[] {android.Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
-    }
+      requestPermissions( new String[] {android.Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
   }
 
+  // after user permission then callinto this function
   @Override
   public void onRequestPermissionsResult(
       int requestCode, String[] permissions, int[] grantResults) {
@@ -286,6 +299,7 @@ public class SpeechActivity extends Activity
     }
   }
 
+  // create a special thread for record
   public synchronized void startRecording() {
     if (recordingThread != null) {
       return;
@@ -320,8 +334,9 @@ public class SpeechActivity extends Activity
     if (bufferSize == AudioRecord.ERROR || bufferSize == AudioRecord.ERROR_BAD_VALUE) {
       bufferSize = SAMPLE_RATE * 2;
     }
+	// bufferSize:byte, so short length should be / 2
     short[] audioBuffer = new short[bufferSize / 2];
-
+	// create audio record
     AudioRecord record =
         new AudioRecord(
             MediaRecorder.AudioSource.DEFAULT,
@@ -334,7 +349,7 @@ public class SpeechActivity extends Activity
       Log.e(LOG_TAG, "Audio Record can't initialize!");
       return;
     }
-
+	// audio record: startRecording
     record.startRecording();
 
     Log.v(LOG_TAG, "Start recording");
@@ -435,6 +450,7 @@ public class SpeechActivity extends Activity
       long currentTime = System.currentTimeMillis();
       final RecognizeCommands.RecognitionResult result =
           recognizeCommands.processLatestResults(outputScores[0], currentTime);
+
       lastProcessingTimeMs = new Date().getTime() - startTime;
       runOnUiThread(
           new Runnable() {

@@ -20,20 +20,33 @@ import java.util.HashSet;
 import java.util.Set;
 
 /** Wrapper for the platform log function, allows convenient message prefixing and log disabling. */
+// now Logger not used in this project.
 public final class Logger {
+
+  // static variable : static final type
   private static final String DEFAULT_TAG = "tensorflow";
   private static final int DEFAULT_MIN_LOG_LEVEL = Log.DEBUG;
 
   // Classes to be ignored when examining the stack trace
   private static final Set<String> IGNORED_CLASS_NAMES;
 
-  static {
+  /**
+   * Unlike C++, Java supports a special block, called static block (also called static clause)
+   * which can be used for static initializations of a class.
+   * This code inside static block is executed only once: the first time the class is loaded into memory.
+   */
+  static { //A blank final static variable:IGNORED_CLASS_NAMES can be initialized inside static block.
     IGNORED_CLASS_NAMES = new HashSet<String>(3);
     IGNORED_CLASS_NAMES.add("dalvik.system.VMStack");
     IGNORED_CLASS_NAMES.add("java.lang.Thread");
     IGNORED_CLASS_NAMES.add(Logger.class.getCanonicalName());
   }
 
+  /**
+   * A blank final variable can be initialized inside instance-initializer block or inside constructor.
+   * If you have more than one constructor in your class then it must be initialized in all of them,
+   * otherwise compile time error will be thrown.
+   */
   private final String tag;
   private final String messagePrefix;
   private int minLogLevel = DEFAULT_MIN_LOG_LEVEL;
@@ -104,6 +117,7 @@ public final class Logger {
    *
    * @return caller's simple name
    */
+  // a methot to indicate how to get caller class name
   private static String getCallerSimpleName() {
     // Get the current callstack so we can pull the class of the caller off of it.
     final StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();

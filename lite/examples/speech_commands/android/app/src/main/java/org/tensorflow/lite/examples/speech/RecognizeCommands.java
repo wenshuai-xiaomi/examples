@@ -24,6 +24,19 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 
+/* how to use RecognizeCommands
+ Set up an object to smooth recognition results to increase accuracy.
+    recognizeCommands =
+        new RecognizeCommands(
+            labels, // all the labels including _silence and _unknown
+            AVERAGE_WINDOW_DURATION_MS, // 1000ms
+            DETECTION_THRESHOLD,		// 0.50
+            SUPPRESSION_MS,				// 压制时间
+            MINIMUM_COUNT,				// 3 ?
+            MINIMUM_TIME_BETWEEN_SAMPLES_MS // 30 多长时间进行一次reference?
+			);
+ */
+
 /** Reads in results from an instantaneous audio recognition model and smoothes them over time. */
 public class RecognizeCommands {
   // Configuration settings.
@@ -44,7 +57,7 @@ public class RecognizeCommands {
   private static final String SILENCE_LABEL = "_silence_";
   private static final long MINIMUM_TIME_FRACTION = 4;
 
-  public RecognizeCommands(
+  public RecognizeCommands( //inxxx: in mean input argument
       List<String> inLabels,
       long inAverageWindowDurationMs,
       float inDetectionThreshold,
@@ -56,11 +69,13 @@ public class RecognizeCommands {
     detectionThreshold = inDetectionThreshold;
     suppressionMs = inSuppressionMS;
     minimumCount = inMinimumCount;
+    minimumTimeBetweenSamplesMs = inMinimumTimeBetweenSamplesMS;
     labelsCount = inLabels.size();
+	// previousTop: attributes: lable, time, and score
+    // not using RecognitionResult to descript previous
     previousTopLabel = SILENCE_LABEL;
     previousTopLabelTime = Long.MIN_VALUE;
     previousTopLabelScore = 0.0f;
-    minimumTimeBetweenSamplesMs = inMinimumTimeBetweenSamplesMS;
   }
 
   /** Holds information about what's been recognized. */
@@ -76,6 +91,7 @@ public class RecognizeCommands {
     }
   }
 
+  // based on score to sort
   private static class ScoreForSorting implements Comparable<ScoreForSorting> {
     public final float score;
     public final int index;
@@ -97,7 +113,9 @@ public class RecognizeCommands {
     }
   }
 
+  // using the internal classes: RecognitionResult and ScoreForSorting
   public RecognitionResult processLatestResults(float[] currentResults, long currentTimeMS) {
+    // compare the reference result and configure
     if (currentResults.length != labelsCount) {
       throw new RuntimeException(
           "The results for recognition should contain "
@@ -106,6 +124,8 @@ public class RecognizeCommands {
               + currentResults.length);
     }
 
+	// private Deque<Pair<Long, float[]>> previousResults = new ArrayDeque<Pair<Long, float[]>>();
+	// check the double queue: previousResults
     if ((!previousResults.isEmpty()) && (currentTimeMS < previousResults.getFirst().first)) {
       throw new RuntimeException(
           "You must feed results in increasing time order, but received a timestamp of "
@@ -182,7 +202,10 @@ public class RecognizeCommands {
     } else {
       timeSinceLastTop = currentTimeMS - previousTopLabelTime;
     }
+
     boolean isNewCommand;
+	// isNewCommand not mean that previousTopLabel not same as the current.
+	// i.e will silence will send many times to activity thread
     if ((currentTopScore > detectionThreshold) && (timeSinceLastTop > suppressionMs)) {
       previousTopLabel = currentTopLabel;
       previousTopLabelTime = currentTimeMS;
