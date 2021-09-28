@@ -1,0 +1,34 @@
+Please first see the bazel BUILD all, enven including kissfft.
+especiallly kissfft/BUILD.bazel.
+
+ 20     copts = [
+ 21         "-DFIXED_POINT=16",
+ 22     ],
+
+After using bazel build bazel_xxx directory will be generated which including kissfft download by bazel build.
+
+How to indicate the "-DFIXED_POINT=16" by cmakefile ?
+
+add_definitions("-DFIXED_POINT=16")
+
+which mean that:
+   74 #ifdef FIXED_POINT
+   75  
+   76 #if (FIXED_POINT == 16)
+   77   printf("check the meaning of add_definitions\n");
+   78 #endif
+   79  
+   80 #endif
+
+if not "-DFIXED_POINT=16", the result is very seriously wrong.
+
+the audio feature used for trainning not align with reference.
+
+// abosulte directory can be used.
+ 34 target_include_directories(micro_frontend
+ 35     PUBLIC
+ 36         ${PROJECT_SOURCE_DIR}
+ 37         "/home/ws/code/opensource_wenshuai_branch/tensorflow"
+ 38         ${PROJECT_SOURCE_DIR}/kissfft
+ 39         ${PROJECT_SOURCE_DIR}/kissfft/tools
+

@@ -43,6 +43,7 @@ public class RecognizeCommands {
 
   private static final String SILENCE_LABEL = "_silence_";
   private static final long MINIMUM_TIME_FRACTION = 4;
+  private static final String LOG_TAG = "wenshuai";
 
   public RecognizeCommands(
       List<String> inLabels,
@@ -106,6 +107,7 @@ public class RecognizeCommands {
               + currentResults.length);
     }
 
+    // check the dequeue of previous results and the oldest element: first
     if ((!previousResults.isEmpty()) && (currentTimeMS < previousResults.getFirst().first)) {
       throw new RuntimeException(
           "You must feed results in increasing time order, but received a timestamp of "
@@ -115,20 +117,23 @@ public class RecognizeCommands {
     }
 
     int howManyResults = previousResults.size();
-    // Ignore any results that are coming in too frequently.
+    // Ignore any results that are coming in too frequently. compare with the last element
     if (howManyResults > 1) {
       final long timeSinceMostRecent = currentTimeMS - previousResults.getLast().first;
       if (timeSinceMostRecent < minimumTimeBetweenSamplesMs) {
+        Log.v(LOG_TAG, "too freqently less than 30ms and return false");
         return new RecognitionResult(previousTopLabel, previousTopLabelScore, false);
       }
     }
 
     // Add the latest results to the head of the queue.
     previousResults.addLast(new Pair<Long, float[]>(currentTimeMS, currentResults.clone()));
+    //Log.v(LOG_TAG, "add one element");
 
     // Prune any earlier results that are too old for the averaging window.
     final long timeLimit = currentTimeMS - averageWindowDurationMs;
     while (previousResults.getFirst().first < timeLimit) {
+      //Log.v(LOG_TAG, "remove than 1000ms");
       previousResults.removeFirst();
     }
 
@@ -136,19 +141,19 @@ public class RecognizeCommands {
 
     // If there are too few results, assume the result will be unreliable and
     // bail.
-    final long earliestTime = previousResults.getFirst().first;
-    final long samplesDuration = currentTimeMS - earliestTime;
+    //  final long earliestTime = previousResults.getFirst().first;
+    //final long samplesDuration = currentTimeMS - earliestTime;
 
-    Log.v("Number of Results: ", String.valueOf(howManyResults));
+    //Log.v(LOG_TAG, String.valueOf(howManyResults));
 
-    Log.v(
-        "Duration < WD/FRAC?",
-        String.valueOf((samplesDuration < (averageWindowDurationMs / MINIMUM_TIME_FRACTION))));
+    //Log.v(
+    //    LOG_TAG,
+     //   String.valueOf((samplesDuration < (averageWindowDurationMs / MINIMUM_TIME_FRACTION))));
 
     if ((howManyResults < minimumCount)
     //        || (samplesDuration < (averageWindowDurationMs / MINIMUM_TIME_FRACTION))
     ) {
-      Log.v("RecognizeResult", "Too few results");
+      Log.v(LOG_TAG, "Too few results and return false");
       return new RecognitionResult(previousTopLabel, 0.0f, false);
     }
 
@@ -165,7 +170,7 @@ public class RecognizeCommands {
 
     // Sort the averaged results in descending score order.
     ScoreForSorting[] sortedAverageScores = new ScoreForSorting[labelsCount];
-    for (int i = 0; i < labelsCount; ++i) {
+    for (int i = 0; i < labelsCount; ++i) { //add index element then sorted
       sortedAverageScores[i] = new ScoreForSorting(averageScores[i], i);
     }
     Arrays.sort(sortedAverageScores);
@@ -183,13 +188,16 @@ public class RecognizeCommands {
       timeSinceLastTop = currentTimeMS - previousTopLabelTime;
     }
     boolean isNewCommand;
+    // New command maybe the same command
     if ((currentTopScore > detectionThreshold) && (timeSinceLastTop > suppressionMs)) {
       previousTopLabel = currentTopLabel;
       previousTopLabelTime = currentTimeMS;
       previousTopLabelScore = currentTopScore;
       isNewCommand = true;
+      //Log.v(LOG_TAG, "new command: " + currentTopLabel + " score " + currentTopScore + " supperss time: " + timeSinceLastTop);
     } else {
       isNewCommand = false;
+      //Log.v(LOG_TAG, "old command: " + currentTopLabel + " score " + currentTopScore + " supperss time: " + timeSinceLastTop);
     }
     return new RecognitionResult(currentTopLabel, currentTopScore, isNewCommand);
   }

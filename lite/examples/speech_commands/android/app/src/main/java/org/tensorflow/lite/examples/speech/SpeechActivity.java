@@ -53,18 +53,27 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.FloatBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.Tensor;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 /**
  * An activity that listens for audio and then uses a TensorFlow model to detect particular classes,
@@ -85,14 +94,19 @@ public class SpeechActivity extends Activity
   private static final int SUPPRESSION_MS = 1500;
   private static final int MINIMUM_COUNT = 3;
   private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 30;
-  private static final String LABEL_FILENAME = "file:///android_asset/conv_actions_labels.txt";
-  private static final String MODEL_FILENAME = "file:///android_asset/conv_actions_frozen.tflite";
+  //private static final String LABEL_FILENAME = "file:///android_asset/conv_actions_labels.txt";
+  private static final String LABEL_FILENAME = "file:///android_asset/iot_light_labels.txt";
+  //private static final String MODEL_FILENAME = "file:///android_asset/conv_actions_frozen.tflite";
+  //private static final String MODEL_FILENAME = "file:///android_asset/q_tcn.tflite";
+  //private static final String MODEL_FILENAME = "file:///android_asset/q_micro_model.tflite";
+  private static final String MODEL_FILENAME = "file:///android_asset/q_model.tflite";
 
   private static final String HANDLE_THREAD_NAME = "CameraBackground";
 
   // UI elements.
   private static final int REQUEST_RECORD_AUDIO = 13;
-  private static final String LOG_TAG = SpeechActivity.class.getSimpleName();
+  //private static final String LOG_TAG = SpeechActivity.class.getSimpleName();
+  private static final String LOG_TAG = "wenshuai";
 
   // Working variables.
   short[] recordingBuffer = new short[RECORDING_LENGTH];
@@ -135,6 +149,8 @@ public class SpeechActivity extends Activity
   private TextView selectedTextView = null;
   private HandlerThread backgroundThread;
   private Handler backgroundHandler;
+  private AiTranslatePCMDataDebug mPCMData;
+  private String mPCMDataFileName;
 
   /** Memory-map the model file in Assets. */
   private static MappedByteBuffer loadModelFile(AssetManager assets, String modelFilename)
@@ -147,11 +163,14 @@ public class SpeechActivity extends Activity
     return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
   }
 
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     // Set up the UI.
     super.onCreate(savedInstanceState);
     setContentView(R.layout.tfe_sc_activity_speech);
+    FileOutputStream outputStream = createFile2StorePCMData();
+    mPCMData = new AiTranslatePCMDataDebug(outputStream);
 
     // Load the labels for the model, but only display those that don't start
     // with an underscore.
@@ -192,8 +211,8 @@ public class SpeechActivity extends Activity
 
     // Start the recording and recognition threads.
     requestMicrophonePermission();
-    startRecording();
-    startRecognition();
+    //startRecording();
+    //startRecognition();
 
     sampleRateTextView = findViewById(R.id.sample_rate);
     inferenceTimeTextView = findViewById(R.id.inference_info);
@@ -265,11 +284,22 @@ public class SpeechActivity extends Activity
     plusImageView.setOnClickListener(this);
     minusImageView.setOnClickListener(this);
 
-    sampleRateTextView.setText(SAMPLE_RATE + " Hz");
+    //sampleRateTextView.setText(SAMPLE_RATE + " Hz");
+    /*
+    float inputData[] = {1.5f, 67.2f};
+    float mfccResult[];
+    Log.v(LOG_TAG, "start mfcc process-->");
+    mfccResult = getMfccFromSampleData(inputData);
+    Log.v(LOG_TAG, "<--mfcc result len: " + mfccResult.length);
+    Log.v(LOG_TAG, "mfcc result: " + Arrays.toString(mfccResult));
+     */
+    sampleRateTextView.setText( stringFromJNI() );
   }
 
   private void requestMicrophonePermission() {
+    Log.v(LOG_TAG, "call into requestMicrophonePermission");
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      Log.v(LOG_TAG, "Build.VERSION.SDK_INT >= Build.VERSION_CODES.M");
       requestPermissions(
           new String[] {android.Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
     }
@@ -342,8 +372,16 @@ public class SpeechActivity extends Activity
     // Loop, gathering audio data and copying it to a round-robin buffer.
     while (shouldContinue) {
       int numberRead = record.read(audioBuffer, 0, audioBuffer.length);
-      int maxLength = recordingBuffer.length;
+      // 1. store the pcm data into file
+//      byte[] pcmBytes = ShortToByte_Twiddle_Method(audioBuffer, numberRead);
+//      mPCMData.storeAudioData2File(pcmBytes, 2*numberRead);
+
+      // audio data read into audioBuffer from offset and request size, return the real read data
+      // numberRead(short): based on the input argument
+      int maxLength = recordingBuffer.length; // specific value,why get it each time?
+      // to get the new offset after read new data into round-robin
       int newRecordingOffset = recordingOffset + numberRead;
+      // check the new data will store into two parts or not?
       int secondCopyLength = Math.max(0, newRecordingOffset - maxLength);
       int firstCopyLength = numberRead - secondCopyLength;
       // We store off all the data for the recognition thread to access. The ML
@@ -351,6 +389,7 @@ public class SpeechActivity extends Activity
       // lock, so this should be thread safe.
       recordingBufferLock.lock();
       try {
+        // audio buffer足够大，能保存所有读到的数据，不会导致数据丢失？
         System.arraycopy(audioBuffer, 0, recordingBuffer, recordingOffset, firstCopyLength);
         System.arraycopy(audioBuffer, firstCopyLength, recordingBuffer, 0, secondCopyLength);
         recordingOffset = newRecordingOffset % maxLength;
@@ -392,10 +431,11 @@ public class SpeechActivity extends Activity
     Log.v(LOG_TAG, "Start recognition");
 
     short[] inputBuffer = new short[RECORDING_LENGTH];
+    short[] shortMicroInputBuffer = new short[RECORDING_LENGTH];
     float[][] floatInputBuffer = new float[RECORDING_LENGTH][1];
     float[][] outputScores = new float[1][labels.size()];
     int[] sampleRateList = new int[] {SAMPLE_RATE};
-
+    boolean testSample = true;
     // Loop, grabbing recorded data and running the recognition model on it.
     while (shouldContinueRecognition) {
       long startTime = new Date().getTime();
@@ -416,21 +456,37 @@ public class SpeechActivity extends Activity
       // We need to feed in float values between -1.0f and 1.0f, so divide the
       // signed 16-bit inputs.
       for (int i = 0; i < RECORDING_LENGTH; ++i) {
-        floatInputBuffer[i][0] = inputBuffer[i] / 32767.0f;
+        //floatInputBuffer[i][0] = inputBuffer[i] / 32767.0f;
+        shortMicroInputBuffer[i] = inputBuffer[i];
+      }
+      // store pcm data into a file to debug.
+//      byte[] pcmBytes = ShortToByte_Twiddle_Method(shortMicroInputBuffer, RECORDING_LENGTH);
+//      mPCMData.storeAudioData2File(pcmBytes, 2*RECORDING_LENGTH);
+
+      //Object[] inputArray = {floatInputBuffer, sampleRateList};
+      if (outputScores[0][2] > 0.2) {
+        Log.v(LOG_TAG, "reference result: light_on: " + outputScores[0][2]);
+      }
+      if (outputScores[0][3] > 0.2) {
+        Log.v(LOG_TAG, "reference result: light_off: " + outputScores[0][3]);
       }
 
-      Object[] inputArray = {floatInputBuffer, sampleRateList};
+      float mfcc_result[] = getMfccFromSampleData(shortMicroInputBuffer);
+      //Log.v(LOG_TAG, Arrays.toString(mfcc_result));
+
+      Object[] inputArray = {mfcc_result};
       Map<Integer, Object> outputMap = new HashMap<>();
       outputMap.put(0, outputScores);
 
       // Run the model.
       tfLiteLock.lock();
       try {
-        tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
+        //tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
+        tfLite.run(FloatBuffer.wrap(mfcc_result), outputScores);
       } finally {
         tfLiteLock.unlock();
       }
-
+      //Log.v(LOG_TAG, "reference result: " + Arrays.toString(outputScores[0]));
       // Use the smoother to figure out if we've had a real recognition event.
       long currentTime = System.currentTimeMillis();
       final RecognizeCommands.RecognitionResult result =
@@ -514,6 +570,7 @@ public class SpeechActivity extends Activity
         Thread.sleep(MINIMUM_TIME_BETWEEN_SAMPLES_MS);
       } catch (InterruptedException e) {
         // Ignore
+        Log.v(LOG_TAG, " thread sleep failed?");
       }
     }
 
@@ -565,8 +622,20 @@ public class SpeechActivity extends Activity
         tfLite = null;
       }
       tfLite = new Interpreter(tfLiteModel, tfLiteOptions);
-      tfLite.resizeInput(0, new int[] {RECORDING_LENGTH, 1});
-      tfLite.resizeInput(1, new int[] {1});
+      int inputTensorCount =  tfLite.getInputTensorCount();
+      Log.v(LOG_TAG, "input tensor number: " + inputTensorCount);
+      Tensor inputTensor_1 = tfLite.getInputTensor(0);
+      Log.v(LOG_TAG, "input tensor_1: data type "+ inputTensor_1.dataType() + " shape: " + Arrays.toString(inputTensor_1.shape()));
+
+      int outputTensorCount =  tfLite.getOutputTensorCount();
+      Log.v(LOG_TAG, "output tensor number: " + outputTensorCount);
+      Tensor outputTensor_1 = tfLite.getOutputTensor(0);
+      Log.v(LOG_TAG, "output tensor_1: data type "+ outputTensor_1.dataType() + " shape: " + Arrays.toString(outputTensor_1.shape()));
+
+      //tfLite.resizeInput(0, new int[] {1, 98, 1, 40});
+
+      //tfLite.resizeInput(0, new int[] {RECORDING_LENGTH, 1});
+      //tfLite.resizeInput(1, new int[] {1});
     } finally {
       tfLiteLock.unlock();
     }
@@ -599,6 +668,75 @@ public class SpeechActivity extends Activity
   @Override
   protected void onStop() {
     super.onStop();
+    mPCMData.endAudioData2File(mPCMDataFileName);
     stopBackgroundThread();
+    stopRecording();
+    stopRecognition();
+  }
+
+
+  private FileOutputStream createFile2StorePCMData() {
+    String mStoreDir = null;
+    FileOutputStream outputStream = null;
+
+    File externalFilesDir = getExternalFilesDir(null);
+    if (externalFilesDir != null) {
+      mStoreDir = externalFilesDir.getAbsolutePath() + "/pcms/";
+      Log.e(LOG_TAG,  mStoreDir);
+      File storeDirectory = new File(mStoreDir);
+      if (!storeDirectory.exists()) {
+        boolean success = storeDirectory.mkdirs();
+        if (!success) {
+          Log.e(LOG_TAG, "failed to create file storage directory.");
+        }
+      }
+    } else {
+      Log.e(LOG_TAG, "failed to create file storage directory, getExternalFilesDir is null.");
+      return outputStream;
+    }
+
+    File saveFile;
+    SimpleDateFormat sDateFormat =
+            new SimpleDateFormat("yyyyMMdd-HHmmssSSS", Locale.getDefault());
+    String date = sDateFormat.format(new Date());
+
+    Log.v(LOG_TAG, "dir: " + mStoreDir);
+    mPCMDataFileName = mStoreDir + date + ".pcm";
+    Log.v(LOG_TAG, "pcm data file: " + mPCMDataFileName);
+    saveFile = new File(mPCMDataFileName);
+    try {
+      outputStream = new FileOutputStream(saveFile);
+    } catch (IOException e) {
+      Log.e(LOG_TAG, "" + e);
+    }
+
+    return outputStream;
+  }
+
+  byte[] ShortToByte_Twiddle_Method(short[] input, int len)
+  {
+    int short_index = 0;
+    int byte_index = 0;
+    int iterations = len;
+
+    byte[] buffer = new byte[len * 2];
+
+    for(; short_index != iterations;)
+    {
+      buffer[byte_index]     = (byte) (input[short_index] & 0x00FF);
+      buffer[byte_index + 1] = (byte) ((input[short_index] & 0xFF00) >> 8);
+
+      ++short_index;
+      byte_index += 2;
+    }
+
+    return buffer;
+  }
+
+  public native String  stringFromJNI();
+  public native float[]  getMfccFromSampleData(short[] data);
+
+  static {
+    System.loadLibrary("micro_frontend");
   }
 }

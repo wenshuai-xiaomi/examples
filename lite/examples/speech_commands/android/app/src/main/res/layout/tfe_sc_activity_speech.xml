@@ -19,7 +19,7 @@
     android:layout_height="match_parent"
     android:background="#00000000">
 
-    <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
@@ -73,7 +73,7 @@
                     android:layout_weight=".5"
                     android:background="@drawable/round_corner_text_bg_unselected"
                     android:gravity="center"
-                    android:text="Yes" />
+                    android:text="小爱开灯" />
 
                 <TextView
                     android:id="@+id/no"
@@ -83,7 +83,7 @@
                     android:layout_weight=".5"
                     android:background="@drawable/round_corner_text_bg_unselected"
                     android:gravity="center"
-                    android:text="No" />
+                    android:text="小爱关灯" />
 
             </LinearLayout>
 
