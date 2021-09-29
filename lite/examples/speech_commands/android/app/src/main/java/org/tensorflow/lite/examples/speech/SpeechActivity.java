@@ -43,6 +43,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import androidx.appcompat.widget.SwitchCompat;
+
+import android.os.PowerManager;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewTreeObserver;
@@ -90,7 +92,7 @@ public class SpeechActivity extends Activity
   private static final int SAMPLE_DURATION_MS = 1000;
   private static final int RECORDING_LENGTH = (int) (SAMPLE_RATE * SAMPLE_DURATION_MS / 1000);
   private static final long AVERAGE_WINDOW_DURATION_MS = 1000;
-  private static final float DETECTION_THRESHOLD = 0.50f;
+  private static final float DETECTION_THRESHOLD = 0.70f;
   private static final int SUPPRESSION_MS = 1500;
   private static final int MINIMUM_COUNT = 3;
   private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 30;
@@ -151,6 +153,7 @@ public class SpeechActivity extends Activity
   private Handler backgroundHandler;
   private AiTranslatePCMDataDebug mPCMData;
   private String mPCMDataFileName;
+  private PowerManager.WakeLock mWakeLock;
 
   /** Memory-map the model file in Assets. */
   private static MappedByteBuffer loadModelFile(AssetManager assets, String modelFilename)
@@ -294,6 +297,12 @@ public class SpeechActivity extends Activity
     Log.v(LOG_TAG, "mfcc result: " + Arrays.toString(mfccResult));
      */
     sampleRateTextView.setText( stringFromJNI() );
+
+    PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+    mWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
+            "record-recognition");
+    mWakeLock.acquire();
+
   }
 
   private void requestMicrophonePermission() {
@@ -436,6 +445,7 @@ public class SpeechActivity extends Activity
     float[][] outputScores = new float[1][labels.size()];
     int[] sampleRateList = new int[] {SAMPLE_RATE};
     boolean testSample = true;
+    long lastDetectedTimeMs = 0;
     // Loop, grabbing recorded data and running the recognition model on it.
     while (shouldContinueRecognition) {
       long startTime = new Date().getTime();
@@ -464,10 +474,10 @@ public class SpeechActivity extends Activity
 //      mPCMData.storeAudioData2File(pcmBytes, 2*RECORDING_LENGTH);
 
       //Object[] inputArray = {floatInputBuffer, sampleRateList};
-      if (outputScores[0][2] > 0.2) {
+      if (outputScores[0][2] > 0.7) {
         Log.v(LOG_TAG, "reference result: light_on: " + outputScores[0][2]);
       }
-      if (outputScores[0][3] > 0.2) {
+      if (outputScores[0][3] > 0.7) {
         Log.v(LOG_TAG, "reference result: light_off: " + outputScores[0][3]);
       }
 
@@ -489,6 +499,13 @@ public class SpeechActivity extends Activity
       //Log.v(LOG_TAG, "reference result: " + Arrays.toString(outputScores[0]));
       // Use the smoother to figure out if we've had a real recognition event.
       long currentTime = System.currentTimeMillis();
+      long during_ms = currentTime - lastDetectedTimeMs;
+      if (during_ms > 1000 && (outputScores[0][2] > 0.99 || outputScores[0][3] > 0.99)) {
+        lastDetectedTimeMs = currentTime;
+        // to get the data which trigger object which not silence and unknown
+        byte[] pcmBytes = ShortToByte_Twiddle_Method(shortMicroInputBuffer, RECORDING_LENGTH);
+        mPCMData.storeAudioData2File(pcmBytes, 2*RECORDING_LENGTH);
+      }
       final RecognizeCommands.RecognitionResult result =
           recognizeCommands.processLatestResults(outputScores[0], currentTime);
       lastProcessingTimeMs = new Date().getTime() - startTime;
@@ -661,20 +678,25 @@ public class SpeechActivity extends Activity
   @Override
   protected void onResume() {
     super.onResume();
-
+    Log.v(LOG_TAG, "call into resume");
     startBackgroundThread();
   }
 
   @Override
   protected void onStop() {
     super.onStop();
-    mPCMData.endAudioData2File(mPCMDataFileName);
+    Log.v(LOG_TAG, "call into stop");
     stopBackgroundThread();
-    stopRecording();
-    stopRecognition();
   }
 
-
+  @Override
+  protected void onDestroy() {
+    Log.v(LOG_TAG, "call into destroy");
+    mPCMData.endAudioData2File(mPCMDataFileName);
+    stopRecording();
+    stopRecognition();
+    mWakeLock.release();
+  }
   private FileOutputStream createFile2StorePCMData() {
     String mStoreDir = null;
     FileOutputStream outputStream = null;
