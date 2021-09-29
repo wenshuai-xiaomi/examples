@@ -189,6 +189,7 @@ public class RecognizeCommands {
     }
     boolean isNewCommand;
     // New command maybe the same command
+    //Log.v(LOG_TAG, "scor: " + currentTopScore);
     if ((currentTopScore > detectionThreshold) && (timeSinceLastTop > suppressionMs)) {
       previousTopLabel = currentTopLabel;
       previousTopLabelTime = currentTimeMS;
